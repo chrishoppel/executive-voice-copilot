@@ -34,40 +34,41 @@ st.markdown(
     """
     <style>
     .main {
-        padding-top: 1.2rem;
+        padding-top: 1rem;
     }
     .hero-card {
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
         color: white;
-        padding: 1.4rem 1.5rem;
+        padding: 1.15rem 1.25rem;
         border-radius: 18px;
-        margin-bottom: 1rem;
+        margin-bottom: 0.8rem;
         box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
     }
     .hero-title {
-        font-size: 2rem;
+        font-size: 1.8rem;
         font-weight: 700;
-        margin-bottom: 0.3rem;
+        margin-bottom: 0.2rem;
     }
     .hero-subtitle {
-        font-size: 1rem;
-        opacity: 0.92;
-        margin-bottom: 0.8rem;
+        font-size: 0.98rem;
+        opacity: 0.95;
+        margin-bottom: 0.35rem;
     }
     .hero-note {
-        font-size: 0.92rem;
-        opacity: 0.85;
+        font-size: 0.9rem;
+        opacity: 0.82;
     }
     .section-card {
         background: #f8fafc;
-        padding: 1rem 1rem 0.8rem 1rem;
+        color: #0f172a;
+        padding: 0.8rem 0.95rem;
         border-radius: 16px;
         border: 1px solid #e2e8f0;
-        margin-bottom: 1rem;
+        margin-bottom: 0.75rem;
     }
     .small-label {
         font-size: 0.85rem;
-        color: #475569;
+        color: #334155;
         margin-bottom: 0.2rem;
     }
     .sample-box {
@@ -75,10 +76,18 @@ st.markdown(
         color: #0f172a;
         border: 1px solid #e2e8f0;
         border-radius: 14px;
-        padding: 0.85rem 1rem;
-        margin-bottom: 0.8rem;
-        min-height: 220px;
-}
+        padding: 0.75rem 0.85rem;
+        margin-bottom: 0.5rem;
+        min-height: 145px;
+        font-size: 0.93rem;
+    }
+    .sample-title {
+        font-weight: 700;
+        margin-bottom: 0.4rem;
+    }
+    .footer-note {
+        color: #94a3b8;
+        font-size: 0.85rem;
     }
     </style>
     """,
@@ -97,11 +106,11 @@ DEFAULT_SAMPLES = {
         "because the team is already stretched and reducing capacity will slow reporting, "
         "weaken decision support, and hurt our ability to optimize spend"
     ),
-    "Leadership Reporting Issue": (
+    "Reporting Issue": (
         "I need to explain to leadership that reporting inconsistency is slowing decisions "
         "because the team keeps reconciling numbers instead of acting on the data"
     ),
-    "Customer Data Fragmentation": (
+    "Data Fragmentation": (
         "I need to explain why customer data fragmentation is blocking personalization and "
         "reducing campaign efficiency across the business"
     ),
@@ -210,29 +219,29 @@ st.markdown(
     <div class="hero-card">
         <div class="hero-title">Executive Voice Copilot</div>
         <div class="hero-subtitle">Turn rough thinking into clear, executive-ready communication</div>
-        <div class="hero-note">
-            Built for high-stakes leadership conversations, interview prep, and sharper stakeholder communication
-        </div>
+        <div class="hero-note">Built for leadership updates, stakeholder messaging, and interview prep</div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-top_left, top_right = st.columns([3, 2])
+intro_left, intro_right = st.columns([3, 2])
 
-with top_left:
+with intro_left:
     st.markdown(
         """
         <div class="section-card">
             <div class="small-label"><strong>How to use it</strong></div>
-            Speak or paste a rough thought, then get back a sharper headline, business impact, recommendation,
-            challenge question, coaching feedback, and spoken playback
+            <div>1. Paste a rough thought or record your answer</div>
+            <div>2. Choose the audience, tone, and response length</div>
+            <div>3. Generate a sharper executive version</div>
+            <div>4. Review the challenge question, coaching feedback, and playback</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-with top_right:
+with intro_right:
     st.info("Demo note: text and audio inputs are processed to generate coaching output.")
 
 with st.sidebar:
@@ -269,7 +278,12 @@ sample_cols = st.columns(3)
 for idx, (label, prompt) in enumerate(DEFAULT_SAMPLES.items()):
     with sample_cols[idx]:
         st.markdown(
-            f'<div class="sample-box"><strong>{label}</strong><br><br>{prompt}</div>',
+            f"""
+            <div class="sample-box">
+                <div class="sample-title">{label}</div>
+                <div>{prompt}</div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
         if st.button(f"Use {label}", key=f"sample_{idx}", use_container_width=True):
@@ -282,7 +296,7 @@ with left:
     audio_value = st.audio_input("Record your answer")
     manual_text = st.text_area(
         "Or paste rough thoughts here",
-        height=220,
+        height=180,
         value=st.session_state.manual_text,
         placeholder=(
             "Example: I need to explain that our reporting inconsistency is slowing "
@@ -439,4 +453,4 @@ else:
         st.write("- Helps users practice sharper leadership communication")
 
 st.divider()
-st.caption("Executive Voice Copilot • Demo app for executive communication coaching")
+st.markdown('<div class="footer-note">Executive Voice Copilot • Demo app for executive communication coaching</div>', unsafe_allow_html=True)
