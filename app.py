@@ -72,11 +72,13 @@ st.markdown(
     }
     .sample-box {
         background: #f8fafc;
+        color: #0f172a;
         border: 1px solid #e2e8f0;
         border-radius: 14px;
         padding: 0.85rem 1rem;
         margin-bottom: 0.8rem;
         min-height: 220px;
+}
     }
     </style>
     """,
