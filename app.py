@@ -25,7 +25,7 @@ else:
     api_key = os.getenv("OPENAI_API_KEY")
 
 st.set_page_config(
-    page_title="Executive Voice Copilot",
+    page_title="Executive Communication Coach",
     page_icon="🎙️",
     layout="wide",
 )
@@ -34,60 +34,66 @@ st.markdown(
     """
     <style>
     .main {
-        padding-top: 1rem;
+        padding-top: 0.9rem;
     }
     .hero-card {
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
         color: white;
-        padding: 1.15rem 1.25rem;
-        border-radius: 18px;
-        margin-bottom: 0.8rem;
+        padding: 1.2rem 1.3rem;
+        border-radius: 20px;
+        margin-bottom: 0.9rem;
         box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
     }
     .hero-title {
-        font-size: 1.8rem;
+        font-size: 1.85rem;
         font-weight: 700;
         margin-bottom: 0.2rem;
     }
     .hero-subtitle {
         font-size: 0.98rem;
-        opacity: 0.95;
+        opacity: 0.94;
         margin-bottom: 0.35rem;
     }
     .hero-note {
         font-size: 0.9rem;
         opacity: 0.82;
     }
-    .section-card {
+    .panel {
         background: #f8fafc;
         color: #0f172a;
-        padding: 0.8rem 0.95rem;
-        border-radius: 16px;
         border: 1px solid #e2e8f0;
-        margin-bottom: 0.75rem;
+        border-radius: 16px;
+        padding: 0.9rem 1rem;
+        margin-bottom: 0.8rem;
     }
-    .small-label {
-        font-size: 0.85rem;
-        color: #334155;
-        margin-bottom: 0.2rem;
+    .panel-title {
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #475569;
+        margin-bottom: 0.45rem;
     }
-    .sample-box {
-        background: #f8fafc;
+    .sample-chip {
+        background: #ffffff;
         color: #0f172a;
+        border: 1px solid #dbe3ee;
+        border-radius: 14px;
+        padding: 0.7rem 0.8rem;
+        margin-bottom: 0.55rem;
+        min-height: 110px;
+        font-size: 0.92rem;
+    }
+    .metric-card {
+        background: #ffffff;
         border: 1px solid #e2e8f0;
         border-radius: 14px;
         padding: 0.75rem 0.85rem;
-        margin-bottom: 0.5rem;
-        min-height: 145px;
-        font-size: 0.93rem;
-    }
-    .sample-title {
-        font-weight: 700;
-        margin-bottom: 0.4rem;
+        margin-bottom: 0.6rem;
     }
     .footer-note {
         color: #94a3b8;
-        font-size: 0.85rem;
+        font-size: 0.84rem;
     }
     </style>
     """,
@@ -100,30 +106,49 @@ if not api_key:
 
 client = OpenAI(api_key=api_key)
 
-DEFAULT_SAMPLES = {
-    "CFO Resource Case": (
-        "I need to explain to the CFO that we should not cut analytics resources right now "
-        "because the team is already stretched and reducing capacity will slow reporting, "
-        "weaken decision support, and hurt our ability to optimize spend"
-    ),
-    "Reporting Issue": (
+SITUATION_OPTIONS = [
+    "Executive update",
+    "Interview answer",
+    "Recommendation to leadership",
+    "Difficult stakeholder conversation",
+    "Board / CFO challenge",
+]
+
+SAMPLE_PROMPTS = {
+    "Executive update": (
         "I need to explain to leadership that reporting inconsistency is slowing decisions "
         "because the team keeps reconciling numbers instead of acting on the data"
     ),
-    "Data Fragmentation": (
-        "I need to explain why customer data fragmentation is blocking personalization and "
-        "reducing campaign efficiency across the business"
+    "Interview answer": (
+        "I need to explain how I lead analytics teams in a way that improves decision quality, "
+        "not just reporting output"
+    ),
+    "Recommendation to leadership": (
+        "I need to explain to the CFO that we should not cut analytics resources right now "
+        "because reducing capacity will slow reporting, weaken decision support, and hurt spend optimization"
+    ),
+    "Difficult stakeholder conversation": (
+        "I need to tell a cross-functional leader that the current request is not scoped well enough "
+        "to deliver a reliable answer quickly"
+    ),
+    "Board / CFO challenge": (
+        "I need to explain why fragmented customer data is limiting personalization and reducing marketing efficiency"
     ),
 }
 
-for key, value in {
+STATE_DEFAULTS = {
     "transcript_text": "",
     "coach": None,
     "filler_counts": {},
     "playback_path": None,
     "session_path": None,
     "manual_text": "",
-}.items():
+    "challenge_input": "",
+    "challenge_result": None,
+    "selected_situation": SITUATION_OPTIONS[0],
+}
+
+for key, value in STATE_DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = value
 
@@ -135,6 +160,26 @@ def clear_session() -> None:
     st.session_state.playback_path = None
     st.session_state.session_path = None
     st.session_state.manual_text = ""
+    st.session_state.challenge_input = ""
+    st.session_state.challenge_result = None
+
+
+def build_why_stronger_points(coach, transcript_text: str) -> list[str]:
+    points = []
+
+    if transcript_text:
+        points.append("It leads with the main point instead of building up to it")
+
+    if coach.why_it_matters:
+        points.append("It makes the business implication clearer and easier to act on")
+
+    if coach.recommendation:
+        points.append("It gives a more direct point of view instead of staying descriptive")
+
+    if coach.stronger_closing_line:
+        points.append("It ends with a cleaner, more confident takeaway")
+
+    return points[:3]
 
 
 def run_coaching(
@@ -147,6 +192,7 @@ def run_coaching(
     mode: str,
     tts_voice: str,
     save_history: bool,
+    situation: str,
 ) -> None:
     transcript_text = ""
 
@@ -167,20 +213,24 @@ def run_coaching(
         st.warning("Add a little more context so the coaching can produce a specific executive response.")
         return
 
-    with st.spinner("Reframing for executive communication..."):
+    coaching_mode = mode
+    if situation == "Board / CFO challenge" and mode == "Practice":
+        coaching_mode = "Challenge"
+
+    with st.spinner("Sharpening your answer..."):
         coach = build_coach_response(
             client=client,
             transcript=transcript_text,
             audience=audience,
             tone=tone,
             response_length=response_length,
-            mode=mode,
+            mode=coaching_mode,
         )
 
     filler_counts = detect_fillers(transcript_text)
     playback_path = OUTPUT_DIR / "executive_playback.mp3"
 
-    with st.spinner("Generating spoken playback..."):
+    with st.spinner("Generating audio playback..."):
         synthesize_speech(
             client,
             coach.polished_spoken_version,
@@ -191,10 +241,11 @@ def run_coaching(
     session_payload = {
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "settings": {
+            "situation": situation,
             "audience": audience,
             "tone": tone,
             "response_length": response_length,
-            "mode": mode,
+            "mode": coaching_mode,
             "voice": tts_voice,
         },
         "transcript": transcript_text,
@@ -212,40 +263,50 @@ def run_coaching(
     st.session_state.playback_path = str(playback_path)
     st.session_state.session_path = session_path.name if session_path else None
     st.session_state.manual_text = manual_text
+    st.session_state.challenge_input = ""
+    st.session_state.challenge_result = None
 
 
 st.markdown(
     """
     <div class="hero-card">
-        <div class="hero-title">Executive Voice Copilot</div>
-        <div class="hero-subtitle">Turn rough thinking into clear, executive-ready communication</div>
-        <div class="hero-note">Built for leadership updates, stakeholder messaging, and interview prep</div>
+        <div class="hero-title">Executive Communication Coach</div>
+        <div class="hero-subtitle">Practice turning rough thoughts into clear, confident, leadership-ready communication</div>
+        <div class="hero-note">Built for executive updates, interviews, stakeholder conversations, and recommendation framing</div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-intro_left, intro_right = st.columns([3, 2])
+top_left, top_right = st.columns([3, 2])
 
-with intro_left:
+with top_left:
     st.markdown(
         """
-        <div class="section-card">
-            <div class="small-label"><strong>How to use it</strong></div>
-            <div>1. Paste a rough thought or record your answer</div>
-            <div>2. Choose the audience, tone, and response length</div>
-            <div>3. Generate a sharper executive version</div>
-            <div>4. Review the challenge question, coaching feedback, and playback</div>
+        <div class="panel">
+            <div class="panel-title">How it works</div>
+            <div>1. Choose the situation you are preparing for</div>
+            <div>2. Record or paste your rough answer</div>
+            <div>3. Get a sharper version and clear coaching</div>
+            <div>4. Practice again using the challenge question</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-with intro_right:
-    st.info("Demo note: text and audio inputs are processed to generate coaching output.")
+with top_right:
+    st.info("This is a coaching product. Use it to practice, compare, and improve how you communicate over time.")
 
 with st.sidebar:
-    st.header("Session Settings")
+    st.header("Practice Setup")
+
+    selected_situation = st.selectbox(
+        "Situation",
+        SITUATION_OPTIONS,
+        index=SITUATION_OPTIONS.index(st.session_state.selected_situation),
+    )
+    st.session_state.selected_situation = selected_situation
+
     audience = st.selectbox(
         "Audience",
         ["CEO", "CMO", "CFO", "Board", "Peer Leader", "Recruiter"],
@@ -255,15 +316,15 @@ with st.sidebar:
         ["Decisive", "Calm", "Strategic", "Persuasive"],
     )
     response_length = st.selectbox(
-        "Response length",
+        "Answer length",
         ["20 seconds", "45 seconds", "90 seconds", "2 minutes"],
     )
     mode = st.selectbox(
-        "Mode",
-        ["Reframe", "Practice", "Challenge", "Polish"],
+        "Practice mode",
+        ["Practice", "Reframe", "Challenge", "Polish"],
     )
     tts_voice = st.selectbox(
-        "Voice",
+        "Playback voice",
         ["cedar", "marin", "alloy", "ash", "echo", "sage"],
     )
     save_history = st.checkbox("Save session history", value=True)
@@ -273,42 +334,67 @@ with st.sidebar:
         clear_session()
         st.rerun()
 
-st.subheader("Try a sample prompt")
-sample_cols = st.columns(3)
-for idx, (label, prompt) in enumerate(DEFAULT_SAMPLES.items()):
-    with sample_cols[idx]:
+st.subheader("Start with a situation")
+situation_cols = st.columns(3)
+
+for idx, situation in enumerate(SITUATION_OPTIONS[:3]):
+    with situation_cols[idx]:
         st.markdown(
             f"""
-            <div class="sample-box">
-                <div class="sample-title">{label}</div>
-                <div>{prompt}</div>
+            <div class="sample-chip">
+                <strong>{situation}</strong><br><br>
+                {SAMPLE_PROMPTS[situation]}
             </div>
             """,
             unsafe_allow_html=True,
         )
-        if st.button(f"Use {label}", key=f"sample_{idx}", use_container_width=True):
-            st.session_state.manual_text = prompt
+        if st.button(f"Use {situation}", key=f"situation_{idx}", use_container_width=True):
+            st.session_state.selected_situation = situation
+            st.session_state.manual_text = SAMPLE_PROMPTS[situation]
+            st.rerun()
+
+more_cols = st.columns(2)
+for idx, situation in enumerate(SITUATION_OPTIONS[3:], start=3):
+    with more_cols[idx - 3]:
+        st.markdown(
+            f"""
+            <div class="sample-chip">
+                <strong>{situation}</strong><br><br>
+                {SAMPLE_PROMPTS[situation]}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button(f"Use {situation}", key=f"situation_{idx}", use_container_width=True):
+            st.session_state.selected_situation = situation
+            st.session_state.manual_text = SAMPLE_PROMPTS[situation]
+            st.rerun()
 
 left, right = st.columns([1, 1])
 
 with left:
-    st.subheader("Input")
+    st.markdown(
+        """
+        <div class="panel">
+            <div class="panel-title">Your attempt</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     audio_value = st.audio_input("Record your answer")
+
     manual_text = st.text_area(
-        "Or paste rough thoughts here",
+        "Or paste your rough answer",
         height=180,
         value=st.session_state.manual_text,
-        placeholder=(
-            "Example: I need to explain that our reporting inconsistency is slowing "
-            "down decision-making because the team keeps reconciling numbers instead "
-            "of acting on the data..."
-        ),
+        placeholder="Type the way you would actually say it, even if it feels rough or incomplete...",
     )
 
     action_cols = st.columns([2, 1])
     with action_cols[0]:
         generate = st.button(
-            "Generate executive coaching",
+            "Sharpen my answer",
             type="primary",
             use_container_width=True,
         )
@@ -327,6 +413,7 @@ if generate:
         mode=mode,
         tts_voice=tts_voice,
         save_history=save_history,
+        situation=selected_situation,
     )
 
 coach = st.session_state.coach
@@ -336,27 +423,30 @@ playback_path = st.session_state.playback_path
 session_name = st.session_state.session_path
 
 if coach:
-    with left:
-        st.subheader("Transcript")
-        st.write(transcript_text)
-
-        st.subheader("Filler phrases detected")
-        if filler_counts:
-            for phrase, count in filler_counts.items():
-                st.write(f"- {phrase}: {count}")
-        else:
-            st.write("No common filler phrases detected.")
+    why_stronger = build_why_stronger_points(coach, transcript_text)
 
     with right:
+        st.markdown(
+            """
+            <div class="panel">
+                <div class="panel-title">Sharper answer</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
         st.subheader("Audio playback")
         st.audio(playback_path, format="audio/mp3")
+
+        st.subheader("Sharpened version")
+        st.code(coach.polished_spoken_version, language=None)
 
         utility_cols = st.columns(2)
         with utility_cols[0]:
             st.download_button(
-                "Download polished version",
+                "Download sharpened answer",
                 data=coach.polished_spoken_version,
-                file_name="executive_response.txt",
+                file_name="sharpened_answer.txt",
                 mime="text/plain",
                 use_container_width=True,
             )
@@ -365,15 +455,17 @@ if coach:
                 "Download session JSON",
                 data=json.dumps(
                     {
+                        "situation": selected_situation,
                         "transcript": transcript_text,
                         "headline": coach.executive_headline,
                         "business_impact": coach.why_it_matters,
                         "recommendation": coach.recommendation,
                         "spoken_version": coach.polished_spoken_version,
+                        "challenge": coach.tough_question,
                     },
                     indent=2,
                 ),
-                file_name="executive_session.json",
+                file_name="communication_coaching_session.json",
                 mime="application/json",
                 use_container_width=True,
             )
@@ -381,76 +473,135 @@ if coach:
         if session_name:
             st.caption(f"Saved session: {session_name}")
 
-        result_tabs = st.tabs(["Executive Output", "Coaching", "Portfolio View"])
+        st.subheader("Why this is stronger")
+        for point in why_stronger:
+            st.write(f"- {point}")
 
-        with result_tabs[0]:
-            st.subheader("Executive headline")
-            st.write(coach.executive_headline)
+        st.subheader("Coach's challenge")
+        st.write(coach.tough_question)
 
-            st.subheader("Business impact")
-            st.write(coach.why_it_matters)
+        st.subheader("One thing to improve next")
+        if coach.coaching_feedback:
+            st.write(coach.coaching_feedback[0])
+        else:
+            st.write("Make the main point earlier and keep the recommendation direct.")
 
-            st.subheader("Recommendation")
-            st.write(coach.recommendation)
+    below_left, below_right = st.columns([1, 1])
 
-            st.subheader("Key supporting points")
-            for point in coach.support_points:
-                st.write(f"- {point}")
+    with below_left:
+        st.markdown(
+            """
+            <div class="panel">
+                <div class="panel-title">Compare</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-            st.subheader("Polished spoken version")
-            st.code(coach.polished_spoken_version, language=None)
+        st.subheader("Your original answer")
+        st.write(transcript_text)
 
-            st.subheader("Executive closing line")
-            st.write(coach.stronger_closing_line)
+        st.subheader("Headline")
+        st.write(coach.executive_headline)
 
-        with result_tabs[1]:
-            st.subheader("Leadership challenge")
-            st.write(coach.tough_question)
+        st.subheader("Business impact")
+        st.write(coach.why_it_matters)
 
-            st.subheader("Coaching feedback")
-            for item in coach.coaching_feedback:
-                st.write(f"- {item}")
+        st.subheader("Recommendation")
+        st.write(coach.recommendation)
 
-            st.subheader("Scores")
-            score_cols = st.columns(5)
-            score_cols[0].metric("Clarity", coach.scores.clarity)
-            score_cols[1].metric("Concision", coach.scores.concision)
-            score_cols[2].metric("Presence", coach.scores.executive_presence)
-            score_cols[3].metric("Business", coach.scores.business_focus)
-            score_cols[4].metric("Action", coach.scores.actionability)
+        st.subheader("Key supporting points")
+        for point in coach.support_points:
+            st.write(f"- {point}")
 
-        with result_tabs[2]:
-            st.subheader("Portfolio-ready summary")
-            st.markdown(
-                """
-                **Executive Voice Copilot** is an AI-powered communication coach designed to help leaders
-                turn rough thinking into concise, executive-ready messaging.
+        st.subheader("Filler phrases detected")
+        if filler_counts:
+            for phrase, count in filler_counts.items():
+                st.write(f"- {phrase}: {count}")
+        else:
+            st.write("No common filler phrases detected.")
 
-                **Current capabilities**
-                - Accepts audio or text input
-                - Reframes ideas for executive audiences
-                - Produces a sharpened spoken response
-                - Generates audio playback
-                - Scores clarity, concision, executive presence, business focus, and actionability
-                - Saves session history locally
+    with below_right:
+        st.markdown(
+            """
+            <div class="panel">
+                <div class="panel-title">Practice again</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-                **Primary use cases**
-                - Leadership updates
-                - Interview preparation
-                - Stakeholder messaging
-                - Recommendation framing
-                - Executive communication practice
-                """
-            )
+        st.write("Answer the challenge question in your own words, then compare how you improved.")
+
+        challenge_input = st.text_area(
+            "Your response to the challenge",
+            height=150,
+            value=st.session_state.challenge_input,
+            placeholder="Type how you would answer the challenge question...",
+        )
+
+        retry_cols = st.columns([2, 1])
+        with retry_cols[0]:
+            retry = st.button("Sharpen my challenge response", use_container_width=True)
+        with retry_cols[1]:
+            if st.button("Reset practice", use_container_width=True):
+                st.session_state.challenge_input = ""
+                st.session_state.challenge_result = None
+                st.rerun()
+
+        if retry:
+            st.session_state.challenge_input = challenge_input
+            if len(challenge_input.split()) < 6:
+                st.warning("Add a little more detail so the challenge response can be sharpened.")
+            else:
+                with st.spinner("Sharpening challenge response..."):
+                    challenge_result = build_coach_response(
+                        client=client,
+                        transcript=challenge_input,
+                        audience=audience,
+                        tone=tone,
+                        response_length=response_length,
+                        mode="Polish",
+                    )
+                st.session_state.challenge_result = challenge_result
+
+        if st.session_state.challenge_result:
+            retry_result = st.session_state.challenge_result
+
+            st.subheader("Sharpened challenge response")
+            st.code(retry_result.polished_spoken_version, language=None)
+
+            st.subheader("What improved")
+            if retry_result.coaching_feedback:
+                for item in retry_result.coaching_feedback[:2]:
+                    st.write(f"- {item}")
+
+    st.divider()
+    score_cols = st.columns(5)
+    score_cols[0].metric("Clarity", coach.scores.clarity)
+    score_cols[1].metric("Concision", coach.scores.concision)
+    score_cols[2].metric("Presence", coach.scores.executive_presence)
+    score_cols[3].metric("Business", coach.scores.business_focus)
+    score_cols[4].metric("Action", coach.scores.actionability)
+
 else:
     with right:
-        st.subheader("What this app does")
-        st.write("- Records voice or accepts rough text")
-        st.write("- Transcribes spoken input when audio is used")
-        st.write("- Reframes it into an executive answer")
-        st.write("- Generates spoken playback")
-        st.write("- Scores clarity, concision, executive presence, business focus, and actionability")
-        st.write("- Helps users practice sharper leadership communication")
+        st.markdown(
+            """
+            <div class="panel">
+                <div class="panel-title">What you will get</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.write("- A sharper version of your answer")
+        st.write("- Clear feedback on why it improved")
+        st.write("- One realistic challenge question")
+        st.write("- A chance to practice again immediately")
+        st.write("- Audio playback for delivery practice")
 
 st.divider()
-st.markdown('<div class="footer-note">Executive Voice Copilot • Demo app for executive communication coaching</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="footer-note">Executive Communication Coach • Practice clear, confident communication over time</div>',
+    unsafe_allow_html=True,
+)
